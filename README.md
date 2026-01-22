@@ -11,7 +11,7 @@
 
 ## 📚 Complete Documentation
 
-**[📄 View Full Technical Documentation (PDF)](docs/documentation/employee-lifecycle-platform-documentation. pdf)**
+**[📄 View Full Technical Documentation (PDF)](docs/documentation/Case_Study_3_Learning_Report.pdf)**
 
 > 📖 Comprehensive technical documentation covering architecture, implementation, security, monitoring, and operations.  Includes detailed diagrams, code examples, and best practices.
 
