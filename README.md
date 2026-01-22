@@ -291,9 +291,9 @@ Network access is restricted using **Kubernetes NetworkPolicies** to enforce Zer
 
 ### Self-Healing Kubernetes Deployment
 
-Kubernetes automatically recreates failed pods:
+Kubernetes automatically recreates failed pods: 
 
-![Self-healing demo](docs/screenshots/kubernetes/01-self-healing-pod-delete.png)
+![Self-healing demo](docs/screenshots/kubernetes/01-self-healing-pods.png)
 
 **Demo**:  Deleting a pod triggers the Deployment controller to recreate it within seconds, ensuring zero downtime.
 
