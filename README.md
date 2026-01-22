@@ -7,6 +7,33 @@
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-EKS-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900?logo=amazonaws)](https://aws.amazon.com/)
 
+---
+
+## 📚 Complete Documentation
+
+**[📄 View Full Technical Documentation (PDF)](docs/documentation/employee-lifecycle-platform-documentation. pdf)**
+
+> 📖 Comprehensive technical documentation covering architecture, implementation, security, monitoring, and operations.  Includes detailed diagrams, code examples, and best practices.
+
+### 📑 What's Covered: 
+
+| Chapter | Topic | Description |
+|---------|-------|-------------|
+| 1️⃣ | **Architecture & Design** | System architecture, design decisions, and component interactions |
+| 2️⃣ | **Infrastructure as Code** | Complete Terraform configuration and deployment guide |
+| 3️⃣ | **Kubernetes Orchestration** | EKS cluster setup, pod deployment, and networking |
+| 4️⃣ | **Security Implementation** | Zero Trust architecture, RBAC, and network policies |
+| 5️⃣ | **Identity Management** | AWS Cognito and Managed Microsoft AD integration |
+| 6️⃣ | **Automated Workflows** | Employee onboarding and offboarding automation |
+| 7️⃣ | **Monitoring & Observability** | CloudWatch, Prometheus, Grafana, and Loki setup |
+| 8️⃣ | **Cost Optimization** | Strategies for minimizing AWS costs |
+| 9️⃣ | **CI/CD Pipeline** | GitHub Actions workflows and deployment automation |
+| 🔟 | **Operations Guide** | Troubleshooting, maintenance, and scaling procedures |
+
+**📊 Documentation Stats:** 3.8 KB | Includes architecture diagrams, screenshots, and code examples | **Last Updated:** January 2026
+
+---
+
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
