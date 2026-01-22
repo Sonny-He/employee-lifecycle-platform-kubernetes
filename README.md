@@ -488,28 +488,118 @@ aws ce get-cost-and-usage \
 
 ### Monitoring Stack
 
-The platform includes a comprehensive monitoring solution:
+The platform includes a comprehensive monitoring solution combining both AWS-native and open-source tools:
 
-- **Prometheus**: Scrapes metrics from EKS nodes, pods, and AWS services
-- **Grafana**:  Pre-configured dashboards for infrastructure and application metrics
+- **CloudWatch**: AWS service metrics, logs, and alarms for EKS, WorkSpaces, and Active Directory
+- **Prometheus**:  Scrapes metrics from EKS nodes, pods, and AWS services
+- **Grafana**: Pre-configured dashboards for infrastructure and application metrics
 - **Loki**: Log aggregation from all Kubernetes pods
-- **CloudWatch**: AWS service metrics and EKS control plane logs
 
-### Accessing Monitoring (via VPN)
+---
+
+### CloudWatch Monitoring
+
+#### EKS Cluster Monitoring
+
+CloudWatch provides detailed metrics for the Kubernetes cluster including node health, pod utilization, and control plane logs: 
+
+![EKS Cluster Monitoring](docs/screenshots/monitoring/01-EKS-cluster-monitoring-CLOUDWATCH.png)
+
+**Monitored Metrics:**
+- ✅ EKS cluster health and control plane status
+- ✅ Node CPU and memory utilization
+- ✅ Pod resource consumption and restart counts
+- ✅ Network throughput and latency
+- ✅ API server request rates and errors
+
+---
+
+#### Amazon WorkSpaces Monitoring
+
+Real-time monitoring of virtual desktops to ensure employee productivity: 
+
+![WorkSpaces Monitoring](docs/screenshots/monitoring/02-Amazon-WorkSpaces-monitoring-CLOUDWATCH.png)
+
+**Monitored Metrics:**
+- ✅ Active WorkSpace sessions
+- ✅ Connection health and latency
+- ✅ User login/logout events
+- ✅ WorkSpace provisioning status
+- ✅ Resource utilization per desktop
+- ✅ Failed connection attempts
+
+---
+
+### CloudWatch Log Groups
+
+| Log Group | Purpose | Retention |
+|-----------|---------|-----------|
+| `/aws/eks/cs3-employee-platform/cluster` | EKS control plane logs | 7 days |
+| `/aws/eks/cs3-employee-platform/application` | Application container logs | 7 days |
+| `/aws/workspaces/<directory-id>` | WorkSpaces connection logs | 30 days |
+| `/aws/directory-service` | Active Directory events | 30 days |
+
+### CloudWatch Alarms
+
+Proactive alerting ensures rapid response to issues:
+
+**Configured Alarms:**
+- ⚠️ EKS node CPU utilization > 80%
+- ⚠️ Pod memory pressure > 85%
+- ⚠️ WorkSpace connection failures
+- ⚠️ API error rate spike > 5%
+- ⚠️ Database connection pool exhaustion
+
+---
+
+### Prometheus + Grafana Monitoring
+
+#### Accessing Monitoring (via VPN)
 
 1. Connect to OpenVPN (server provisioned by Terraform)
 2. Access Grafana:  `http://<monitoring-ip>:3000`
 3. Default credentials: `admin / admin123`
 
-### Pre-configured Dashboards
+#### Pre-configured Dashboards
 
-- EKS Cluster Overview
-- Node Resource Utilization
-- Pod Health and Logs
-- AWS Service Costs
-- Application Performance
+- **EKS Cluster Overview** - Cluster-wide resource utilization
+- **Node Resource Utilization** - Per-node CPU, memory, disk metrics
+- **Pod Health and Logs** - Container status and log streams
+- **AWS Service Costs** - Real-time cost tracking
+- **Application Performance** - API latency and throughput
+
+---
+
+### Monitoring Architecture
+
+```
+┌──────────────────────────────────────────────────────┐
+│                  AWS CloudWatch                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
+│  │ Dashboards  │  │   Alarms    │  │  Log Groups │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘ │
+└──────────────────────────────────────────────────────┘
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+     ┌────▼────┐    ┌───▼────┐    ┌────▼────────┐
+     │   EKS   │    │   AD   │    │ WorkSpaces  │
+     └────┬────┘    └────────┘    └─────────────┘
+          │
+          │
+┌─────────▼──────────────────────────────────────────┐
+│           Monitoring EC2 Instance (VPN)            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │Prometheus│  │ Grafana  │  │   Loki   │        │
+│  └──────────┘  └──────────┘  └──────────┘        │
+└────────────────────────────────────────────────────┘
+```
+
+---
 
 ### Useful Monitoring Commands
+
+#### Kubernetes Commands
 
 ```bash
 # View all pods
@@ -526,6 +616,36 @@ kubectl top nodes
 
 # Describe a pod
 kubectl describe pod <pod-name> -n employee-services
+```
+
+#### CloudWatch Commands
+
+```bash
+# View EKS cluster logs
+aws logs tail /aws/eks/cs3-employee-platform/cluster --follow --profile student
+
+# Query application logs for errors
+aws logs tail /aws/eks/cs3-employee-platform/application \
+  --follow \
+  --filter-pattern "ERROR" \
+  --profile student
+
+# View WorkSpaces connection events
+aws logs filter-log-events \
+  --log-group-name /aws/workspaces/<directory-id> \
+  --filter-pattern "CONNECTION" \
+  --profile student
+
+# Get EKS cluster metrics
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/EKS \
+  --metric-name node_cpu_utilization \
+  --dimensions Name=ClusterName,Value=cs3-employee-platform \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 300 \
+  --statistics Average \
+  --profile student
 ```
 
 ---
