@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Portal - InnovaTech</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; text-align: center; }
+        header h1 { margin-bottom: 10px; }
+        
+        .login-section { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; }
+        .login-section h2 { margin-bottom: 20px; color: #333; }
+        .login-section input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        .login-section button { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .login-section button:hover { background: #5568d3; }
+        .error-msg { color: #d32f2f; margin-top: 10px; padding: 10px; background: #ffebee; border-radius: 5px; display: none; }
+        .success-msg { color: #388e3c; margin-top: 10px; padding: 10px; background: #e8f5e9; border-radius: 5px; display: none; }
+        
+        .main-content { display: none; }
+        .user-info { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .logout-btn { padding: 8px 20px; background: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        
+        .section { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .section h2 { color: #333; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #667eea; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        th { background: #f5f5f5; font-weight: 600; color: #555; }
+        tr:hover { background: #f9f9f9; }
+        
+        button { padding: 8px 16px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #4caf50; color: white; }
+        .btn-danger { background: #f44336; color: white; }
+        button:hover { opacity: 0.9; }
+        
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #555; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        
+        .admin-only { border: 2px solid #ffc107; position: relative; }
+        .admin-badge { position: absolute; top: -12px; right: 20px; background: #ffc107; color: #000; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        
+        .status-active { color: #4caf50; font-weight: bold; }
+        .status-inactive { color: #f44336; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="login-section" id="loginSection">
+        <h2>🔐 Employee Portal Login</h2>
+        <p style="color: #666; margin-bottom: 20px;">Sign in with your InnovaTech credentials</p>
+        
+        <input type="text" id="loginUsername" placeholder="Username (e.g., admin)" required>
+        <input type="password" id="loginPassword" placeholder="Password" required>
+        <button onclick="login()">Sign In</button>
+        
+        <div class="error-msg" id="loginError"></div>
+        <div class="success-msg" id="loginSuccess"></div>
+        
+        <p style="margin-top: 20px; color: #888; font-size: 13px;">
+            <strong>Demo Credentials:</strong><br>
+            Username: admin<br>
+            Password: AdminPass123!
+        </p>
+    </div>
+
+    <div class="container main-content" id="mainContent">
+        <header>
+            <h1>🏢 Employee Lifecycle Portal</h1>
+            <p>CS3 MA-NCA - RBAC-Enabled Self-Service System</p>
+        </header>
+        
+        <div class="user-info">
+            <div>
+                <strong>👤 Logged in as:</strong> <span id="userEmail"></span>
+                <span id="userRole"></span>
+            </div>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+
+        <div class="section">
+            <h2>👥 Employee Directory</h2>
+            <button class="btn-primary" onclick="loadEmployees()">🔄 Refresh</button>
+            <table id="employeeTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Department</th>
+                        <th>Position</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="section admin-only" id="createEmployeeSection">
+            <span class="admin-badge">👑 ADMIN ONLY</span>
+            <h2>➕ Create New Employee</h2>
+            <div class="form-group">
+                <label>First Name:</label>
+                <input type="text" id="firstName" placeholder="John">
+            </div>
+            <div class="form-group">
+                <label>Last Name:</label>
+                <input type="text" id="lastName" placeholder="Doe">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="email" placeholder="john.doe@innovatech.local">
+            </div>
+            <div class="form-group">
+                <label>Department:</label>
+                <select id="department">
+                    <option value="Engineering">Engineering</option>
+                    <option value="Human Resources">Human Resources</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Marketing">Marketing</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Role (Determines Software):</label>
+                <select id="role">
+                    <option value="Employee">Standard Employee (Chrome, Slack, Zoom)</option>
+                    <option value="Developer">Developer (VS Code, Git, PuTTY)</option>
+                    <option value="Admin">Administrator (AWS CLI, OpenVPN, Notepad++)</option>
+                </select>
+            </div>
+            <input type="hidden" id="position" value="">
+            <button class="btn-success" onclick="createEmployee()">Create Employee</button>
+            <button class="btn-primary" onclick="syncComputers()" style="background-color: #FF9900;">⚡ Sync WorkSpaces to AD</button>
+            <div id="createStatus"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔑 Access Requests</h2>
+            <button class="btn-primary" onclick="loadAccessRequests()">🔄 Refresh</button>
+            <table id="accessRequestsTable">
+                <thead>
+                    <tr>
+                        <th>Request ID</th>
+                        <th>Employee</th>
+                        <th>Resource</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let authToken = null;
+        let currentUser = null;
+
+        // ============================================================================
+        // AUTHENTICATION
+        // ============================================================================
+        async function login() {
+            const username = document.getElementById('loginUsername').value;  // Changed from loginEmail
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            const successDiv = document.getElementById('loginSuccess');
+            
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            
+            if (!username || !password) {  // Changed from email
+                showError('Please enter both username and password');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })  // Changed from { email, password }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Check if password change is required
+                    if (data.challenge === 'NEW_PASSWORD_REQUIRED') {
+                        // Prompt for new password
+                        const newPassword = prompt('You must change your temporary password.\n\nEnter new password (min 8 chars, must include uppercase, lowercase, number, special char):');
+                        
+                        if (!newPassword) {
+                            showError('Password change cancelled');
+                            return;
+                        }
+                        
+                        // Submit new password
+                        const changeResponse = await fetch(`${API_URL}/auth/change-password`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                email: username,
+                                session: data.session,
+                                new_password: newPassword
+                            })
+                        });
+                        
+                        const changeData = await changeResponse.json();
+                        
+                        if (!changeResponse.ok) {
+                            showError(changeData.error || 'Password change failed. Password must be at least 8 characters with uppercase, lowercase, number, and special character.');
+                            return;
+                        }
+                        
+                        // Use the new tokens
+                        authToken = changeData.token;
+                        currentUser = changeData.user;
+                    } else {
+                        // Normal login
+                        authToken = data.token;
+                        currentUser = data.user;
+                    }
+                    
+                    // Store token and proceed
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('userEmail', currentUser.email);
+                    localStorage.setItem('userGroups', JSON.stringify(currentUser.groups || []));
+                    
+                    successDiv.textContent = '✓ Login successful!';
+                    successDiv.style.display = 'block';
+                    
+                    setTimeout(() => {
+                        document.getElementById('loginSection').style.display = 'none';
+                        document.getElementById('mainContent').style.display = 'block';
+                        initializePortal();
+                    }, 1000);
+                    
+                } else {
+                    showError(data.error || 'Login failed');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Network error. Please try again.');
+            }
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.textContent = '✗ ' + message;
+            errorDiv.style.display = 'block';
+        }
+        
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userEmail');
+            localStorage.removeItem('userGroups');
+            authToken = null;
+            currentUser = null;
+            
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('loginEmail').value = '';
+            document.getElementById('loginPassword').value = '';
+            const userRoleEl = document.getElementById('userRole');
+            userRoleEl.innerHTML = '';
+            userRoleEl.style.display = 'none';
+
+            document.getElementById('userEmail').textContent = '';
+            document.getElementById('createEmployeeSection').style.display = 'none';
+        }
+        
+        function initializePortal() {
+            document.getElementById('userEmail').textContent = currentUser.email;
+            
+            // Check if admin
+            const isAdmin = currentUser.groups && currentUser.groups.includes('admins');
+            const userRoleEl = document.getElementById('userRole');
+            
+            if (isAdmin) {
+            userRoleEl.innerHTML =
+                ' <span style="background: #ffc107; padding: 3px 6px; border-radius: 4px;">👑 ADMIN</span>';
+            userRoleEl.style.display = 'inline';
+            document.getElementById('createEmployeeSection').style.display = 'block';
+            } else {
+            userRoleEl.innerHTML = '';
+            userRoleEl.style.display = 'none';
+            document.getElementById('createEmployeeSection').style.display = 'none';
+            }
+            
+            // Load initial data
+            loadEmployees();
+            loadAccessRequests();
+        }
+        
+        // ============================================================================
+        // API CALLS
+        // ============================================================================
+        
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+            
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            
+            const response = await fetch(`${API_URL}${endpoint}`, options);
+            
+            if (response.status === 401) {
+                logout();
+                throw new Error('Session expired');
+            }
+            
+            return response.json();
+        }
+        
+        async function loadEmployees() {
+            try {
+                const data = await apiCall('/employees');
+                const tbody = document.querySelector('#employeeTable tbody');
+                tbody.innerHTML = '';
+                
+                // 1. Check if current user is admin
+                const isAdmin = currentUser && currentUser.groups && currentUser.groups.includes('admins');
+                
+                // 2. Add header for Actions if admin (and if it doesn't exist yet)
+                const thead = document.querySelector('#employeeTable thead tr');
+                if (isAdmin && !thead.querySelector('.actions-col')) {
+                    const th = document.createElement('th');
+                    th.className = 'actions-col';
+                    th.textContent = 'Actions';
+                    thead.appendChild(th);
+                }
+
+                // FIX: Handle both {employees: [...]} and [...] formats
+                const employees = data.employees || data;
+                
+                employees.forEach(emp => {
+                    const row = tbody.insertRow();
+                    
+                    // 3. Build the standard row cells
+                    row.innerHTML = `
+                        <td>${emp.employee_id || 'N/A'}</td>
+                        <td>${emp.first_name} ${emp.last_name}</td>
+                        <td>${emp.email}</td>
+                        <td>${emp.department || 'N/A'}</td>
+                        <td>${emp.position || 'N/A'}</td>
+                        <td class="status-${emp.status}">${emp.status}</td>
+                    `;
+                    
+                    // 4. Add Terminate Button cell for Admins
+                    if (isAdmin) {
+                        const cell = row.insertCell();
+                        if (emp.status === 'active') {
+                            // This button calls the terminateUser function we added earlier
+                            cell.innerHTML = `<button class="btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="terminateUser('${emp.email}')">Term</button>`;
+                        } else {
+                            cell.innerHTML = '<span style="color: #999; font-size: 12px;">N/A</span>';
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load employees:', error);
+            }
+        }
+        
+        async function createEmployee() {
+            const firstName = document.getElementById('firstName').value;
+            const lastName = document.getElementById('lastName').value;
+            const email = document.getElementById('email').value;
+            const department = document.getElementById('department').value;
+            const role = document.getElementById('role').value;
+            
+            if (!firstName || !lastName || !email) {
+                document.getElementById('createStatus').innerHTML = 
+                    `<p style="color: red; margin-top: 10px;">✗ Please fill all required fields</p>`;
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/create-user`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        first_name: firstName,
+                        last_name: lastName,
+                        email,
+                        department,
+                        role: role,
+                        position: role
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Check if response was successful
+                if (response.ok) {
+                    document.getElementById('createStatus').innerHTML = 
+                        `<p style="color: green; margin-top: 10px;">✓ ${result.message}</p>
+                         <p style="color: #666; margin-top: 5px; font-size: 13px;">
+                            Employee ID: ${result.employee_id}<br>
+                            Cognito: ${result.cognito}<br>
+                            Database: ${result.database}<br>
+                            WorkSpace: ${result.workspace}
+                         </p>`;
+                    
+                    // Clear form
+                    document.getElementById('firstName').value = '';
+                    document.getElementById('lastName').value = '';
+                    document.getElementById('email').value = '';
+                    
+                    // Reload employees after 1 second
+                    setTimeout(() => loadEmployees(), 1000);
+                } else {
+                    // Show error message from backend
+                    document.getElementById('createStatus').innerHTML = 
+                        `<p style="color: red; margin-top: 10px;">✗ Error: ${result.error}</p>`;
+                }
+            } catch (error) {
+                document.getElementById('createStatus').innerHTML = 
+                    `<p style="color: red; margin-top: 10px;">✗ Network Error: ${error.message}</p>`;
+            }
+        }
+        
+        async function terminateUser(email) {
+            if (!confirm(`Are you sure you want to offboard ${email}? This will disable access and terminate their WorkSpace.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/terminate-user`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(result.message);
+                    loadEmployees(); // Refresh list
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to terminate user'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Network error occurred');
+            }
+        }
+
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+        
+        // Check if already logged in
+        window.onload = function() {
+            const storedToken = localStorage.getItem('authToken');
+            const storedEmail = localStorage.getItem('userEmail');
+            const storedGroups = localStorage.getItem('userGroups'); // ← NEW LINE
+            
+            if (storedToken && storedEmail) {
+                authToken = storedToken;
+                currentUser = { 
+                    email: storedEmail,
+                    groups: storedGroups ? JSON.parse(storedGroups) : [] // ← CHANGED LINE
+                };
+                document.getElementById('loginSection').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                initializePortal();
+            }
+        };
+        
+        // Enter key on login
+        document.getElementById('loginPassword')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+
+        async function syncComputers() {
+            const statusDiv = document.getElementById('createStatus');
+            statusDiv.innerHTML = '<p style="color: blue;">⏳ Scanning AWS and AD... this may take a moment...</p>';
+            
+            try {
+                const response = await apiCall('/maintenance/sync-computers', 'POST');
+                
+                if (response.message) {
+                    statusDiv.innerHTML = `<p style="color: green;">${response.message}</p>`;
+                    if(response.errors && response.errors.length > 0) {
+                        statusDiv.innerHTML += `<p style="color: orange; font-size: 12px;">Warnings: ${response.errors.join(', ')}</p>`;
+                    }
+                } else {
+                    statusDiv.innerHTML = `<p style="color: red;">Error: ${response.error}</p>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<p style="color: red;">Network Error: ${error.message}</p>`;
+            }
+        }
+
+    </script>
+</body>
+</html>

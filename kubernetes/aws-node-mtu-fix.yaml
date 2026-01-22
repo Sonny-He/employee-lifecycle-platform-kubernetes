@@ -1,0 +1,17 @@
+# Apply this to fix MTU issues between EKS and AWS Managed AD
+# This reduces the VPC-CNI MTU to prevent fragmentation during SSL/TLS handshakes
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amazon-vpc-cni
+  namespace: kube-system
+data:
+  # Set MTU to 1500 to match AWS Managed AD expectations
+  # Default is 9001 (jumbo frames) which causes SSL handshake failures
+  AWS_VPC_K8S_CNI_EXTERNALSNAT: "false"
+  AWS_VPC_ENI_MTU: "1500"
+  
+---
+# You need to restart the aws-node daemonset after applying this
+# Run: kubectl rollout restart daemonset aws-node -n kube-system

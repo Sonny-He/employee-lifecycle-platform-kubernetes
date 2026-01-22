@@ -1,0 +1,153 @@
+name: 'Terraform Infrastructure - CS3'
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write  # Required for AWS OIDC authentication
+
+env:
+  TF_VERSION: '1.6.0'
+  AWS_REGION: 'eu-central-1'
+
+jobs:
+  terraform:
+    name: 'Terraform'
+    runs-on: ubuntu-latest  # Using GitHub-hosted runner
+    environment: production
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::098347675427:role/GitHubActionsRole
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Test AWS Access
+      run: |
+        aws sts get-caller-identity
+
+    - name: Terraform Format Check
+      id: fmt
+      run: terraform fmt -check -recursive
+      continue-on-error: true
+
+    - name: Terraform Init
+      id: init
+      run: terraform init
+
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate -no-color
+
+    - name: Terraform Plan
+      id: plan
+      if: github.event_name == 'pull_request'
+      run: terraform plan -no-color -input=false
+      continue-on-error: true
+
+    - name: Update Pull Request
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      env:
+        PLAN: ${{ steps.plan.outputs.stdout }}
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+          <details><summary>Show Plan</summary>
+
+          \`\`\`terraform\n
+          ${process.env.PLAN}
+          \`\`\`
+
+          </details>
+
+          *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
+
+    - name: Terraform Plan Status
+      if: steps.plan.outcome == 'failure'
+      run: exit 1
+
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform apply -auto-approve -input=false
+      env:
+        TF_VAR_employee_db_password: ${{ secrets.EMPLOYEE_DB_PASSWORD }}
+
+    - name: Configure kubectl
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        aws eks update-kubeconfig --name cs3-employee-platform --region eu-central-1
+        kubectl cluster-info
+        kubectl get nodes
+
+    - name: Deploy AWS Load Balancer Controller
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        echo "Installing Helm..."
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        
+        echo "Cleaning up old ALB controller if exists..."
+        kubectl delete deployment aws-load-balancer-controller -n kube-system --ignore-not-found
+        kubectl delete clusterrole aws-load-balancer-controller --ignore-not-found
+        kubectl delete clusterrolebinding aws-load-balancer-controller --ignore-not-found
+        
+        echo "Installing ALB Controller CRDs..."
+        kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller/crds?ref=master"
+        
+        echo "Waiting for CRDs to be ready..."
+        sleep 5
+        
+        echo "Installing AWS Load Balancer Controller via Helm..."
+        helm repo add eks https://aws.github.io/eks-charts
+        helm repo update
+        
+        helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+          -n kube-system \
+          --set clusterName=cs3-employee-platform \
+          --set serviceAccount.create=false \
+          --set serviceAccount.name=aws-load-balancer-controller \
+          --set region=eu-central-1 \
+          --set vpcId=vpc-072a8b181a467d24b \
+          --wait \
+          --timeout 5m
+        
+        echo "AWS Load Balancer Controller deployed successfully!"
+
+    - name: Deploy Employee Portal
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        echo "Deploying Employee Portal..."
+        kubectl apply -f kubernetes/employee-portal.yaml
+        kubectl apply -f kubernetes/employee-portal-frontend.yaml
+        
+        echo "Waiting for deployments to be ready..."
+        kubectl wait --for=condition=available --timeout=300s deployment/employee-portal -n employee-services || true
+        
+        echo "Employee Portal deployed successfully!"
