@@ -568,7 +568,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Sonny He**
 
 - GitHub: [@Sonny-He](https://github.com/Sonny-He)
-- LinkedIn: [Connect with me](www.linkedin.com/in/sonny-he-72830b38b)
+- LinkedIn: [Connect with me](https://www.linkedin.com/in/sonny-he-72830b38b)
 
 ---
 
