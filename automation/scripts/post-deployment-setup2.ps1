@@ -134,7 +134,7 @@ Write-Host "`nStep 7: Initializing Schema..." -ForegroundColor Yellow
 
 # A) Copy file
 Exec -ScriptBlock {
-    kubectl cp init-employee-db.sql "employee-services/$($DB_POD):/tmp/init-employee-db.sql"
+    kubectl cp employee-portal/db/init-employee-db.sql "employee-services/$($DB_POD):/tmp/employee-portal/db/init-employee-db.sql"
 } -SuccessMessage "SQL script copied to pod"
 
 # B) Verify if schema exists (Strict Check)
@@ -144,7 +144,7 @@ if ($schemaCheck.Trim() -eq "t") {
 } else {
     # Table missing, run the script
     Exec -ScriptBlock {
-        kubectl exec -n employee-services $DB_POD -- psql -U admin -d employees -f /tmp/init-employee-db.sql 
+        kubectl exec -n employee-services $DB_POD -- psql -U admin -d employees -f /tmp/employee-portal/db/init-employee-db.sql 
     } -SuccessMessage "Schema initialized successfully"
 }
 
