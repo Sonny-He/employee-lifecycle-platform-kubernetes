@@ -1,30 +1,48 @@
 name: 'Terraform Infrastructure - CS3'
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: 
+    inputs:
+      action: 
+        description: 'Terraform action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options: 
+          - plan
+          - apply
+          - destroy
+      auto_approve:
+        description: 'Auto-approve apply/destroy (skip confirmation)'
+        required: false
+        default: false
+        type:  boolean
+      deploy_k8s:
+        description: 'Deploy Kubernetes resources after apply'
+        required: false
+        default: true
+        type: boolean
 
-permissions:
+permissions: 
   contents: read
   pull-requests: write
   id-token: write  # Required for AWS OIDC authentication
 
-env:
+env: 
   TF_VERSION: '1.6.0'
   AWS_REGION: 'eu-central-1'
+  EKS_CLUSTER_NAME:  'cs3-employee-platform'
+  VPC_ID: 'vpc-072a8b181a467d24b'
 
 jobs:
   terraform:
-    name: 'Terraform'
-    runs-on: ubuntu-latest  # Using GitHub-hosted runner
-    environment: production
+    name: 'Terraform ${{ github.event.inputs.action || ''plan'' }}'
+    runs-on: ubuntu-latest
+    environment:  production
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses:  actions/checkout@v4
 
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -40,75 +58,80 @@ jobs:
     - name: Test AWS Access
       run: |
         aws sts get-caller-identity
+        echo "✅ AWS authentication successful"
 
-    - name: Terraform Format Check
+    - name:  Terraform Format Check
       id: fmt
-      run: terraform fmt -check -recursive
+      run: |
+        cd terraform
+        terraform fmt -check -recursive
       continue-on-error: true
 
-    - name: Terraform Init
+    - name:  Terraform Init
       id: init
-      run: terraform init
+      run: |
+        cd terraform
+        terraform init
 
     - name: Terraform Validate
       id: validate
-      run: terraform validate -no-color
+      run: |
+        cd terraform
+        terraform validate -no-color
 
     - name: Terraform Plan
       id: plan
-      if: github.event_name == 'pull_request'
-      run: terraform plan -no-color -input=false
+      if:  github.event. inputs.action == 'plan' || github.event.inputs.action == 'apply'
+      run: |
+        cd terraform
+        terraform plan -no-color -input=false -out=tfplan
       continue-on-error: true
 
-    - name: Update Pull Request
-      uses: actions/github-script@v7
-      if: github.event_name == 'pull_request'
-      env:
-        PLAN: ${{ steps.plan.outputs.stdout }}
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-
-          <details><summary>Show Plan</summary>
-
-          \`\`\`terraform\n
-          ${process.env.PLAN}
-          \`\`\`
-
-          </details>
-
-          *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
-
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: output
-          })
-
     - name: Terraform Plan Status
-      if: steps.plan.outcome == 'failure'
-      run: exit 1
+      if: steps.plan. outcome == 'failure'
+      run: |
+        echo "❌ Terraform plan failed. Review errors above."
+        exit 1
+
+    - name: Terraform Apply (Safety Check)
+      if: github.event.inputs.action == 'apply' && github.event.inputs. auto_approve == 'false'
+      run: |
+        echo "⚠️ Manual approval required. Please review the plan above."
+        echo "To apply, re-run this workflow with 'auto_approve' set to true."
+        exit 1
 
     - name: Terraform Apply
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: terraform apply -auto-approve -input=false
-      env:
+      if: github.event.inputs.action == 'apply' && github. event.inputs.auto_approve == 'true'
+      run:  |
+        cd terraform
+        terraform apply -auto-approve -input=false tfplan
+      env: 
+        TF_VAR_employee_db_password: ${{ secrets.EMPLOYEE_DB_PASSWORD }}
+
+    - name: Terraform Destroy (Safety Check)
+      if: github.event.inputs.action == 'destroy' && github. event.inputs.auto_approve == 'false'
+      run: |
+        echo "⚠️ DESTROY requires manual approval. This will delete ALL infrastructure!"
+        echo "To destroy, re-run this workflow with 'auto_approve' set to true."
+        exit 1
+
+    - name: Terraform Destroy
+      if: github.event. inputs.action == 'destroy' && github.event.inputs.auto_approve == 'true'
+      run: |
+        cd terraform
+        terraform destroy -auto-approve -input=false
+      env: 
         TF_VAR_employee_db_password: ${{ secrets.EMPLOYEE_DB_PASSWORD }}
 
     - name: Configure kubectl
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      if: github.event.inputs.action == 'apply' && github. event.inputs.auto_approve == 'true' && github.event.inputs.deploy_k8s == 'true'
       run: |
-        aws eks update-kubeconfig --name cs3-employee-platform --region eu-central-1
+        aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
         kubectl cluster-info
         kubectl get nodes
 
     - name: Deploy AWS Load Balancer Controller
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      if: github.event.inputs.action == 'apply' && github. event.inputs.auto_approve == 'true' && github.event.inputs.deploy_k8s == 'true'
       run: |
         echo "Installing Helm..."
         curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -119,7 +142,7 @@ jobs:
         kubectl delete clusterrolebinding aws-load-balancer-controller --ignore-not-found
         
         echo "Installing ALB Controller CRDs..."
-        kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller/crds?ref=master"
+        kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller/crds? ref=master"
         
         echo "Waiting for CRDs to be ready..."
         sleep 5
@@ -130,18 +153,18 @@ jobs:
         
         helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
           -n kube-system \
-          --set clusterName=cs3-employee-platform \
-          --set serviceAccount.create=false \
+          --set clusterName=${{ env.EKS_CLUSTER_NAME }} \
+          --set serviceAccount. create=false \
           --set serviceAccount.name=aws-load-balancer-controller \
-          --set region=eu-central-1 \
-          --set vpcId=vpc-072a8b181a467d24b \
+          --set region=${{ env.AWS_REGION }} \
+          --set vpcId=${{ env. VPC_ID }} \
           --wait \
           --timeout 5m
         
-        echo "AWS Load Balancer Controller deployed successfully!"
+        echo "✅ AWS Load Balancer Controller deployed successfully!"
 
-    - name: Deploy Employee Portal
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    - name:  Deploy Employee Portal
+      if: github.event.inputs.action == 'apply' && github.event. inputs.auto_approve == 'true' && github.event.inputs.deploy_k8s == 'true'
       run: |
         echo "Deploying Employee Portal..."
         kubectl apply -f kubernetes/employee-portal.yaml
@@ -150,4 +173,27 @@ jobs:
         echo "Waiting for deployments to be ready..."
         kubectl wait --for=condition=available --timeout=300s deployment/employee-portal -n employee-services || true
         
-        echo "Employee Portal deployed successfully!"
+        echo "✅ Employee Portal deployed successfully!"
+
+    - name: Upload Plan Artifact
+      if: github.event.inputs.action == 'plan'
+      uses: actions/upload-artifact@v4
+      with:
+        name:  terraform-plan
+        path: terraform/tfplan
+        retention-days: 5
+
+    - name:  Workflow Summary
+      if: always()
+      run: |
+        echo "## 🚀 Terraform Workflow Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Action** | ${{ github.event.inputs.action || 'plan' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Auto-approve** | ${{ github.event.inputs.auto_approve || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Deploy K8s** | ${{ github.event.inputs.deploy_k8s || 'true' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Region** | ${{ env.AWS_REGION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Cluster** | ${{ env.EKS_CLUSTER_NAME }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Triggered by** | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Workflow Run** | [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
