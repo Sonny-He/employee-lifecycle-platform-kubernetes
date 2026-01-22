@@ -3,7 +3,7 @@
 > Automated employee onboarding and offboarding platform on AWS using Kubernetes, Terraform, Cognito, Active Directory and WorkSpaces, designed with Zero Trust and least-privilege principles.
 
 [![License:  MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Terraform](https://img.shields.io/badge/Terraform-1.6+-623CE4? logo=terraform)](https://www.terraform.io/)
+[![Terraform](https://img.shields.io/badge/Terraform-1.6+-623CE4?logo=terraform)](https://www.terraform.io/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-EKS-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900?logo=amazonaws)](https://aws.amazon.com/)
 
