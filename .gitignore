@@ -46,7 +46,6 @@ kubeconfig*
 *.swp
 *.swo
 *~
-.DS_Store
 *.iml
 
 # Environment variables and secrets
