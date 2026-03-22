@@ -1,0 +1,78 @@
+# ============================================================================
+# These policies limit pod-to-pod communication (Zero Trust)
+# ============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: employee-portal-policy
+  namespace: employee-services
+spec:
+  podSelector:
+    matchLabels:
+      app: employee-portal
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from LoadBalancer
+  - from:
+    - podSelector: {}  # Any pod in same namespace
+    ports:
+    - protocol: TCP
+      port: 5000
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow database access
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+  # Allow HTTPS for AWS APIs (Cognito, Secrets Manager, WorkSpaces)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0  # Changed from namespaceSelector to ipBlock
+        except:
+        - 169.254.169.254/32  # Block metadata endpoint for security
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow AD/LDAP access
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/16 # Your VPC CIDR
+    ports:
+    - protocol: TCP
+      port: 389   # LDAP
+    - protocol: UDP
+      port: 389   # LDAP
+    - protocol: TCP
+      port: 636   # LDAPS
+    - protocol: TCP
+      port: 88    # Kerberos
+    - protocol: UDP
+      port: 88    # Kerberos
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: employee-services
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  # This denies all traffic by default
+  # Specific policies above will allow only necessary traffic

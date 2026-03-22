@@ -1,0 +1,69 @@
+---
+# Namespace for employee services
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: employee-services
+  labels:
+    name: employee-services
+
+---
+# Service Account for employee portal
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: employee-portal
+  namespace: employee-services
+
+---
+# Service Account for automation service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: automation-service
+  namespace: employee-services
+
+---
+# Simple role for portal - can read configs and secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: portal-role
+  namespace: employee-services
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list"]
+
+---
+# Bind role to service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: portal-binding
+  namespace: employee-services
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: portal-role
+subjects:
+  - kind: ServiceAccount
+    name: employee-portal
+    namespace: employee-services
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-access
+  namespace: employee-services
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: portal-role
+subjects:
+# This binds the role to the 'developers' group 
+# (You map this group to your IAM users in the aws-auth ConfigMap)
+- kind: Group
+  name: developers
+  apiGroup: rbac.authorization.k8s.io

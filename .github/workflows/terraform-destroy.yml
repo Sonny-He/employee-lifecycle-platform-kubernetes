@@ -1,0 +1,238 @@
+name: 'Terraform Destroy - CS3 Infrastructure'
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DESTROY" (all caps) to confirm destruction'
+        required: true
+        default: ''
+      skip_cleanup:
+        description: 'Skip pre-destroy cleanup? (not recommended)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: '1.6.0'
+  AWS_REGION: 'eu-central-1'
+  STATE_BUCKET: 'terraform-state-cs3-ma-nca-sonny'
+
+jobs:
+  destroy:
+    name: 'Destroy Infrastructure'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - name: 🔐 Verify Confirmation
+      run: |
+        if [ "${{ github.event.inputs.confirm }}" != "DESTROY" ]; then
+          echo "❌ ERROR: You must type 'DESTROY' (all caps) to proceed"
+          exit 1
+        fi
+        echo "✅ Confirmation verified"
+
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: 🔑 Configure AWS Credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::098347675427:role/GitHubActionsRole
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: 🔧 Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: 📦 Terraform Init
+      run: terraform init
+
+    # ========================================================================
+    # PRE-DESTROY CLEANUP (SCORCHED EARTH)
+    # ========================================================================
+    - name: 🧹 Pre-Destroy Cleanup
+      if: github.event.inputs.skip_cleanup != 'true'
+      run: |
+        echo "=========================================="
+        echo "🧹 PRE-DESTROY CLEANUP"
+        echo "=========================================="
+        
+        # 1. Clean ECR (Force delete repos + images)
+        for repo in employee-portal employee-portal-frontend; do
+          if aws ecr describe-repositories --repository-names $repo 2>/dev/null; then
+            echo "🔥 Force-deleting ECR repo: $repo"
+            aws ecr delete-repository --repository-name $repo --force || echo "  ⚠️ Failed to delete $repo"
+          fi
+        done
+        
+        # 2. Clean S3 Buckets
+        echo ""
+        echo "Checking for application buckets..."
+        BUCKETS=$(aws s3 ls | grep 'cs3-' | awk '{print $3}' || true)
+        if [ -n "$BUCKETS" ]; then
+          for bucket in $BUCKETS; do
+            if [ "$bucket" == "${{ env.STATE_BUCKET }}" ]; then
+              echo "  🔒 SKIPPING PROTECTED STATE BUCKET: $bucket"
+              continue
+            fi
+            echo "  🗑️ Emptying application bucket: $bucket"
+            aws s3 rm s3://$bucket --recursive || echo "  ⚠️ Failed to empty $bucket"
+          done
+        fi
+        
+        # 3. FORCE DELETE NAMESPACE (Physical Destruction)
+        echo ""
+        echo "🛡️ Force-deleting Kubernetes Namespace..."
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name cs3-employee-platform || echo "  - Cluster might already be gone (skipping)"
+        
+        if kubectl get ns employee-services 2>/dev/null; then
+           echo "  - Deleting 'employee-services' namespace..."
+           # Delete and wait, but timeout after 60s so we don't hang forever
+           kubectl delete ns employee-services --timeout=60s || echo "  ⚠️ Namespace deletion timed out (Terraform will retry)"
+        else
+           echo "  - Namespace not found (already deleted)"
+        fi
+
+        # 4. TERMINATE WORKSPACES (With Wait Loop)
+        echo ""
+        echo "💻 Checking for WorkSpaces..."
+        WORKSPACES=$(aws workspaces describe-workspaces --region ${{ env.AWS_REGION }} --query 'Workspaces[?State!=`TERMINATED`].WorkspaceId' --output text)
+        
+        if [ -n "$WORKSPACES" ]; then
+          echo "  Found WorkSpaces. Terminating..."
+          for ws_id in $WORKSPACES; do
+            clean_id=$(echo "$ws_id" | xargs)
+            echo "  -> Terminating $clean_id"
+            aws workspaces terminate-workspaces --region ${{ env.AWS_REGION }} --terminate-workspace-requests "[{\"WorkspaceId\":\"$clean_id\"}]" || true
+          done
+          
+          echo "  ⏳ WAITING for WorkSpaces to fully terminate (timeout: 5 mins)..."
+          for i in {1..15}; do
+             COUNT=$(aws workspaces describe-workspaces --region ${{ env.AWS_REGION }} --query 'Workspaces[?State!=`TERMINATED`].WorkspaceId' --output text | wc -w)
+             if [ "$COUNT" -eq "0" ]; then
+                echo "  ✅ All WorkSpaces terminated."
+                break
+             fi
+             echo "     Still terminating $COUNT WorkSpace(s)... (Attempt $i/15)"
+             sleep 20
+          done
+        else
+          echo "  - No active WorkSpaces found."
+        fi
+
+        # 5. CLEAN ORPHANED EBS VOLUMES
+        echo ""
+        echo "💾 Checking for orphaned EBS volumes..."
+        VOLS=$(aws ec2 describe-volumes \
+          --filters "Name=status,Values=available" \
+          --query 'Volumes[?Tags[?Key==`Project` && Value==`cs3-ma-nca`] || Tags[?Key==`kubernetes.io/cluster/cs3-employee-platform` && Value==`owned`]].VolumeId' \
+          --output text)
+        
+        if [ -n "$VOLS" ]; then
+          for vol in $VOLS; do
+            echo "  🗑️ Deleting orphaned volume: $vol"
+            aws ec2 delete-volume --volume-id "$vol" || echo "  ⚠️ Failed to delete $vol"
+          done
+        else
+          echo "  - No orphaned volumes found."
+        fi
+
+        # 6. FORCE DELETE SECRETS (Prevents "Soft Delete" Blocking Re-deployment)
+        echo ""
+        echo "🔐 Cleaning Secrets Manager..."
+        SECRETS=$(aws secretsmanager list-secrets --query 'SecretList[?starts_with(Name, `cs3`)].Name' --output text)
+        if [ -n "$SECRETS" ]; then
+          for secret in $SECRETS; do
+            echo "  🔥 Force-deleting secret: $secret"
+            aws secretsmanager delete-secret --secret-id "$secret" --force-delete-without-recovery || echo "  ⚠️ Failed to delete secret"
+          done
+        fi
+
+        # 7. CLEAN ORPHANED LOAD BALANCERS
+        echo ""
+        echo "⚖️ Checking for orphaned Load Balancers..."
+        LBS=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerArn' --output text)
+        for lb in $LBS; do
+           TAGS=$(aws elbv2 describe-tags --resource-arns "$lb" --output json)
+           if echo "$TAGS" | grep -q "cs3-employee-platform"; then
+              echo "  🔥 Orphaned LB found: $lb"
+              aws elbv2 delete-load-balancer --load-balancer-arn "$lb" || echo "  ⚠️ Failed to delete LB"
+              sleep 10
+           fi
+        done
+
+    # ========================================================================
+    # STATE CLEANUP (Smart Version - Fixes "Invalid Target Address")
+    # ========================================================================
+    - name: 🙈 Remove K8s Resources from State
+      run: |
+        echo "Removing Kubernetes resources from Terraform state to bypass Auth errors..."
+        
+        # 1. Get the list of all current resources in the state
+        STATE_LIST=$(terraform state list)
+        
+        # 2. Define the items we want to remove
+        TARGETS=(
+          "kubernetes_namespace.employee_services"
+          "kubernetes_config_map.cognito_config"
+          "kubernetes_config_map.ad_config"
+        )
+        
+        # 3. Loop through and remove ONLY if they exist
+        for target in "${TARGETS[@]}"; do
+          if echo "$STATE_LIST" | grep -Fq "$target"; then
+            echo "  Found $target -> Removing..."
+            terraform state rm "$target"
+          else
+            echo "  Skipping $target (not in state)"
+          fi
+        done
+        
+        echo "✅ K8s resources cleaned from state."
+
+    # ========================================================================
+    # TERRAFORM DESTROY
+    # ========================================================================
+    - name: 💥 Terraform Destroy
+      run: terraform destroy -auto-approve -input=false
+      env:
+        TF_VAR_employee_db_password: ${{ secrets.EMPLOYEE_DB_PASSWORD || 'dummy-destroy-password' }}
+        TF_VAR_ad_admin_password: "dummy-destroy-password"
+
+    # ========================================================================
+    # POST-DESTROY VERIFICATION
+    # ========================================================================
+    - name: ✅ Verify Cleanup
+      run: |
+        echo "=========================================="
+        echo "✅ VERIFYING RESOURCE CLEANUP"
+        echo "=========================================="
+        
+        echo "🔍 Checking EKS cluster..."
+        if aws eks describe-cluster --name cs3-employee-platform 2>/dev/null; then
+          echo "  ⚠️  WARNING: EKS cluster still exists"
+        else
+          echo "  ✅ EKS cluster deleted"
+        fi
+        
+        echo ""
+        echo "🔍 Checking WorkSpaces Directory..."
+        DIR_ID=$(aws workspaces describe-workspace-directories --query 'Directories[?contains(DirectoryName, `innovatech`)].DirectoryId' --output text)
+        if [ -n "$DIR_ID" ]; then
+           echo "  ⚠️ WARNING: Directory $DIR_ID still exists"
+        else
+           echo "  ✅ WorkSpaces Directory deleted"
+        fi
+
+    - name: 🎉 Destruction Complete
+      run: |
+        echo ""
+        echo "ℹ️  NOTE: Your Terraform State Bucket was PROTECTED and still exists:"
+        echo "   -> ${{ env.STATE_BUCKET }}"

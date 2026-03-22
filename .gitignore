@@ -1,0 +1,66 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# VPN Files (generated, don't commit)
+*.ovpn
+client.ovpn
+client-fixed.ovpn
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+.kube/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws/
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+errored.tfstate
+
+# Python
+venv/
+.venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Binaries
+*.exe
+*.dll
+kubectl

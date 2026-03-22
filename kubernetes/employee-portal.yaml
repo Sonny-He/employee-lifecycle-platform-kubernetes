@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: employee-services
+  labels:
+    name: employee-services
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: employee-portal-sa
+  namespace: employee-services
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::098347675427:role/cs1-ma-nca-employee-portal-sa
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: employee-portal
+  namespace: employee-services
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: employee-portal
+  template:
+    metadata:
+      labels:
+        app: employee-portal
+    spec:
+      serviceAccountName: employee-portal-sa
+      containers:
+      - name: portal
+        image: 098347675427.dkr.ecr.eu-central-1.amazonaws.com/employee-portal:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        # Database Configuration
+        - name: DB_HOST
+          value: "postgres.employee-services.svc.cluster.local"
+        - name: DB_NAME
+          value: "employees"
+        - name: DB_USER
+          value: "admin"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: employee-db-credentials
+              key: password
+        
+        # AWS & Cognito Configuration (AUTO-SYNCED FROM TERRAFORM)
+        - name: AWS_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: cognito-config
+              key: region
+        - name: COGNITO_USER_POOL_ID
+          valueFrom:
+            configMapKeyRef:
+              name: cognito-config
+              key: user_pool_id
+        - name: COGNITO_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: cognito-config
+              key: client_id
+        
+        # Active Directory Configuration
+        - name: AD_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: ad-config
+              key: domain
+        - name: AD_DNS_IP
+          value: "10.0.41.73"
+        # - name: AD_USER
+        #   value: "svc-automation"
+        # - name: AD_PASSWORD
+        #   value: "ServiceAuto123!@#"
+        - name: AD_DIRECTORY_ID
+          valueFrom:
+            configMapKeyRef:
+              name: ad-config
+              key: directory_id
+        - name: AD_BUNDLE_ID
+          value: "wsb-93xk71ss4"
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: employee-portal
+  namespace: employee-services
+spec:
+  type: ClusterIP
+  selector:
+    app: employee-portal
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
